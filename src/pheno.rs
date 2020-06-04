@@ -28,18 +28,24 @@ pub trait Fitness: Ord + Eq {
     fn abs_diff(&self, other: &Self) -> Self;
 }
 
+
 /// Defines what a Phenotype is.
 /// A Phenotype can breed with other Phenotypes, resulting in a single child.
 /// A Phenotype can also be mutated.
 /// Finally, a Phenotype has a certain fitness value associated with it.
 ///
 /// If reasonable, it is recommended to have your implementation derive `Copy`.
-pub trait Phenotype<F>: Clone
+pub trait Phenotype<F>: Clone + Sync
 where
     F: Fitness,
 {
     /// Calculate the fitness of this Phenotype.
     fn fitness(&self) -> F;
+
+    /// Calculate the fitness of this Pheonotype relative to another Pheonotype
+    fn relative_fitness(&self, other: &Self) -> f64 {
+        panic!("relative fitness not implemented for this type");
+    }
     /// Perform crossover on this Phenotype, returning a new Phenotype.
     fn crossover(&self, other: &Self) -> Self;
     /// Perform mutation on this Phenotype, returning a new Phenotype.

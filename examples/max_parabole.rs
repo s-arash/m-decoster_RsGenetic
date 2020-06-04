@@ -19,7 +19,7 @@
 extern crate rand;
 extern crate rsgenetic;
 
-use rand::distributions::{IndependentSample, Range};
+use rand::Rng;
 use rsgenetic::pheno::*;
 use rsgenetic::sim::select::*;
 use rsgenetic::sim::seq::Simulator;
@@ -89,9 +89,7 @@ impl Phenotype<MyFitness> for MyData {
         // Because we don't want to have too big mutations, we limit the range to -1, +1.
         // Smaller values can cause slower convergence, but larger values may cause completely
         // wrong values.
-        let between = Range::new(-1.0, 1.0);
-        let mut rng = rand::thread_rng();
-        let offset = between.ind_sample(&mut rng);
+        let offset = rand::thread_rng().gen_range(-1.0 , 1.0);
         MyData { x: self.x + offset }
     }
 }

@@ -1,3 +1,4 @@
+
 // file: mod.rs
 //
 // Copyright 2015-2017 The RsGenetic Developers
@@ -34,6 +35,7 @@ pub use self::max::MaximizeSelector;
 pub use self::max_unstable::UnstableMaximizeSelector;
 pub use self::stochastic::StochasticSelector;
 pub use self::tournament::TournamentSelector;
+pub use self::tournament::HeadToHeadKind;
 
 /// `Parents` come in a `Vec` of two `T`'s.
 pub type Parents<T> = Vec<(T, T)>;
@@ -50,5 +52,23 @@ where
     /// `Err(String)`, containing a message indicating the error.
     ///
     /// Otherwise it contains a vector of parent pairs wrapped in `Ok`.
-    fn select<'a>(&self, population: &'a [T]) -> Result<Parents<&'a T>, String>;
+    fn select<'a>(&self, population: &'a [T]) -> Result<Parents<&'a T>, String> {
+        let res = self.select_and_rank(population)?;
+        Ok(res.0)
+    }
+
+    /// Select elements and return fitness scores for the population. The fitness scores affects
+    /// what individuals will be killed off.
+    /// 
+    /// This method does not have to be implemented. If left unimplemented, individuals are killed
+    /// off at random.
+    fn select_and_rank<'a>(&self, population: &'a [T]) -> Result<(Parents<&'a T>, Vec<f64>), String> {
+        let res = self.select(population)?;
+        Ok((res, vec![0.0; population.len()]))
+    }
+
+    /// find the fittest element from the population.
+    fn fittest<'a>(&self, population: &'a [T]) -> &'a T {
+        population.iter().max_by_key(|f| f.fitness()).unwrap()    
+    }
 }

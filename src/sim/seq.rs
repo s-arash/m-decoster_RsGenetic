@@ -44,7 +44,7 @@ where
     earlystopper: Option<EarlyStopper<F>>,
     duration: Option<NanoSecond>,
     error: Option<String>,
-    phantom: PhantomData<&'a T>,
+    // phantom: PhantomData<&'a T>,
 }
 
 impl<'a, T, F> Simulation<'a, T, F> for Simulator<'a, T, F>
@@ -65,7 +65,7 @@ where
                 earlystopper: None,
                 duration: Some(0),
                 error: None,
-                phantom: PhantomData::default(),
+                // phantom: PhantomData::default(),
             },
         }
     }
@@ -90,24 +90,21 @@ where
         if !should_stop {
             time_start = Instant::now();
 
-            let mut children: Vec<T>;
-            {
-                // Perform selection
-                let parents = match self.selector.select(self.population) {
-                    Ok(parents) => parents,
-                    Err(e) => {
-                        self.error = Some(e);
-                        return StepResult::Failure;
-                    }
-                };
-                // Create children from the selected parents and mutate them.
-                children = parents
-                    .iter()
-                    .map(|&(a, b)| a.crossover(b).mutate())
-                    .collect();
-            }
+            // Perform selection
+            let (parents, ranks) = match self.selector.select_and_rank(self.population) {
+                Ok(parents) => parents,
+                Err(e) => {
+                    self.error = Some(e);
+                    return StepResult::Failure;
+                }
+            };
+            // Create children from the selected parents and mutate them.
+            let mut children : Vec<T> = parents
+                .iter()
+                .map(|&(a, b)| a.crossover(b).mutate())
+                .collect();
             // Kill off parts of the population at random to make room for the children
-            self.kill_off(children.len());
+            self.kill_off(children.len(), &ranks);
             self.population.append(&mut children);
 
             if let Some(ref mut stopper) = self.earlystopper {
@@ -161,7 +158,13 @@ where
     fn get(&'a self) -> SimResult<'a, T> {
         match self.error {
             Some(ref e) => Err(e),
-            None => Ok(self.population.iter().max_by_key(|x| x.fitness()).unwrap()),
+            //None => Ok(self.population.iter().max_by_key(|x| x.fitness()).unwrap()),
+            None => {
+                let population = &self.population;
+                let res = self.selector.fittest(population);
+
+                Ok(res)
+            } 
         }
     }
 
@@ -184,15 +187,47 @@ where
     F: Fitness,
 {
     /// Kill off phenotypes using stochastic universal sampling.
-    fn kill_off(&mut self, count: usize) {
-        let ratio = self.population.len() / count;
-        let mut i = ::rand::thread_rng().gen_range::<usize>(0, self.population.len());
-        for _ in 0..count {
+    fn kill_off(&mut self, count: usize, fitness_scores: &[f64]) {
+        let (fitness_avg, fitness_variance) = avg_variance(fitness_scores);
+        let fitness_std = fitness_variance.sqrt();
+
+        let mut kill_off_indices = Vec::new();
+        let mut killed_off = vec![false; self.population().len()];
+        let mut mutated = 0;
+        while kill_off_indices.len() < count {
+            let i = rand::thread_rng().gen_range(0, self.population().len());
+            if killed_off[i] {continue;}
+            let survival_chance = if fitness_std == 0.0 {0.0} 
+                else {0.5 + ((fitness_scores[i] - fitness_avg) / fitness_std).min(1.9).max(-2.0) / 4.0};
+            
+            if rand::thread_rng().gen_bool(survival_chance) {
+                if mutated < self.population().len() / 5 {
+                    if !rand::thread_rng().gen_bool(survival_chance){
+                        self.population[i] = self.population[i].mutate();
+                        mutated +=1;
+                    }
+                }
+            } else {
+                kill_off_indices.push(i);
+                killed_off[i] = true;
+            } 
+        }
+        kill_off_indices.sort_by_key(|i| -(*i as isize));
+        for &i in kill_off_indices.iter(){
             self.population.swap_remove(i);
-            i += ratio;
-            i %= self.population.len();
         }
     }
+}
+
+fn avg_variance(vals: &[f64]) -> (f64, f64) {
+    let mut sum = 0.0;
+    let mut sum_of_squares = 0.0;
+    for v in vals{
+        sum += v;
+        sum_of_squares += v * v;
+    }
+    let avg = sum / vals.len() as f64;
+    (avg, sum_of_squares / vals.len() as f64 - avg * avg)
 }
 
 /// A `Builder` for the `Simulator` type.
@@ -305,10 +340,11 @@ mod tests {
     fn test_kill_off_count() {
         let selector = MaximizeSelector::new(2);
         let mut population: Vec<Test> = (0..100).map(|i| Test { f: i }).collect();
+        let population_len = population.len();
         let mut s = seq::Simulator::builder(&mut population)
             .set_selector(Box::new(selector))
             .build();
-        s.kill_off(10);
+        s.kill_off(10, &vec![0.0; population_len]);
         assert_eq!(s.population.len(), 90);
     }
 
